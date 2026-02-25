@@ -40,10 +40,36 @@ def _get_ssm_param(name: str, region: str) -> str:
 
 
 def _build_database_url() -> str:
+    """
+    Build MySQL connection URL.
+
+    Priority:
+      1. Full DATABASE_URL env var (useful for Docker / local dev)
+      2. Individual env vars (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD)
+      3. AWS Secrets Manager + SSM (production on EC2)
+    """
+    # Option 1 — direct URL
+    direct_url = os.getenv("DATABASE_URL")
+    if direct_url:
+        logger.info("Using DATABASE_URL from environment")
+        return direct_url
+
+    # Option 2 — individual env vars (local dev / CI)
+    db_host = os.getenv("DB_HOST")
+    db_port = os.getenv("DB_PORT", "3306")
+    db_user = os.getenv("DB_USER")
+    db_password = os.getenv("DB_PASSWORD")
+    db_name = os.getenv("DB_NAME", "myflixdb")
+
+    if db_host and db_user and db_password:
+        logger.info("Using DB credentials from environment variables")
+        return f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+    # Option 3 — AWS (production)
     region = os.getenv("AWS_REGION", "us-east-1")
-    secret_name = os.getenv("SECRET_NAME", "awsb74-rds-creds")
-    ssm_host_key = os.getenv("SSM_HOST_KEY", "/b74/db_host")
-    ssm_port_key = os.getenv("SSM_PORT_KEY", "/b74/db_port")
+    secret_name = os.getenv("SECRET_NAME", "awsb72-rds-creds")
+    ssm_host_key = os.getenv("SSM_HOST_KEY", "/b72/db_host")
+    ssm_port_key = os.getenv("SSM_PORT_KEY", "/b72/db_port")
     db_name = os.getenv("DB_NAME", "myflixdb")
 
     logger.info("Fetching DB credentials from AWS Secrets Manager & SSM …")
@@ -58,6 +84,36 @@ def _build_database_url() -> str:
 
 
 DATABASE_URL = _build_database_url()
+
+
+def _ensure_database_exists(url: str) -> None:
+    """
+    Connect to MySQL *without* specifying a database and create it if missing.
+    Handles the (1049, "Unknown database") error automatically.
+    """
+    try:
+        # Strip the database name from the URL to connect to the server root
+        from sqlalchemy.engine.url import make_url
+        parsed = make_url(url)
+        db_name = parsed.database
+        root_url = url.replace(f"/{db_name}", "/", 1)
+
+        root_engine = create_engine(root_url, pool_pre_ping=True)
+        with root_engine.connect() as conn:
+            conn.execute(
+                __import__("sqlalchemy").text(
+                    f"CREATE DATABASE IF NOT EXISTS `{db_name}` "
+                    f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+            )
+            conn.commit()
+        root_engine.dispose()
+        logger.info(f"✅ Database '{db_name}' is ready")
+    except Exception as e:
+        logger.warning(f"Could not auto-create database: {e}")
+
+
+_ensure_database_exists(DATABASE_URL)
 
 engine = create_engine(
     DATABASE_URL,
