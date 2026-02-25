@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-APP_DIR="/home/ec2-user/myflixdb"
+APP_DIR="/root/myflixdb"
 VENV="$APP_DIR/venv"
 SERVICE="myflixdb"
 LOG_DIR="/var/log/myflixdb"
