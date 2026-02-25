@@ -13,6 +13,9 @@ LOG_DIR="/var/log/myflixdb"
 echo "════════════════════════════════════════════"
 echo "  MyFlixDB — EC2 Deployment"
 echo "════════════════════════════════════════════"
+# ── 0. Create MySQL Databasew Using Workbench ───────────────────────────────────────────────
+CREATE DATABASE IF NOT EXISTS myflixdb;
+EXIT;
 
 # ── 1. System packages ───────────────────────────────────────────────
 echo "[1/7] Installing system packages …"
