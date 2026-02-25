@@ -8,3 +8,4 @@ pydantic==2.7.1
 faker==24.11.0
 python-dotenv==1.0.1
 gunicorn==22.0.0          # production WSGI server on EC2
+aiofiles==23.2.1           # required by fastapi StaticFiles

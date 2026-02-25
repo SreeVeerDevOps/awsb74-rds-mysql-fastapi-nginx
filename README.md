@@ -175,7 +175,7 @@ EC2 IAM Role — inline policy:
 ## Example API Calls
 
 ```bash
-BASE="http://your-ec2-ip"
+BASE="http://ec2-44-193-8-252.compute-1.amazonaws.com"
 
 # Health
 curl $BASE/health

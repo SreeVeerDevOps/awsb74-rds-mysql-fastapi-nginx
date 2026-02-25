@@ -5,8 +5,11 @@ Hosted on EC2 | Backed by AWS RDS MySQL
 
 from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
+from pathlib import Path
 import logging
 
 from .database import engine, get_db, Base
@@ -59,6 +62,20 @@ app.add_middleware(
 def on_startup():
     Base.metadata.create_all(bind=engine)
     logger.info("✅ Database tables created / verified")
+
+
+# ── Static files (HTML frontend) ─────────────────────────────────────
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.get("/", include_in_schema=False)
+def homepage():
+    """Serve the HTML frontend."""
+    html_file = STATIC_DIR / "index.html"
+    if html_file.exists():
+        return FileResponse(str(html_file))
+    return {"message": "MyFlixDB API — visit /docs for API documentation"}
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MyFlixDB — Movie Manager</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f14;
+      --surface:   #13161d;
+      --surface2:  #181c25;
+      --border:    #232836;
+      --accent:    #e8ff47;
+      --accent-dk: #b5c900;
+      --red:       #ff4d6d;
+      --blue:      #4da6ff;
+      --green:     #47ffb2;
+      --text:      #c4cad8;
+      --text-dim:  #4a5368;
+      --text-head: #f0f4ff;
+      --bebas:     'Bebas Neue', cursive;
+      --body:      'DM Sans', sans-serif;
+      --mono:      'DM Mono', monospace;
+      --radius:    6px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline texture */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.07) 2px, rgba(0,0,0,.07) 4px);
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2.5rem;
+      height: 62px;
+      background: rgba(13,15,20,.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+
+    .logo {
+      font-family: var(--bebas);
+      font-size: 1.8rem;
+      letter-spacing: .08em;
+      color: var(--text-head);
+    }
+    .logo span { color: var(--accent); }
+
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+
+    .db-pill {
+      display: flex; align-items: center; gap: .5rem;
+      padding: .3rem .75rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-family: var(--mono); font-size: .7rem;
+      color: var(--text-dim);
+    }
+    .db-pill .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-dim);
+      transition: background .3s;
+    }
+    .db-pill.connected .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s infinite; }
+    .db-pill.connected { color: var(--text); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── MAIN LAYOUT ─────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: calc(100vh - 62px);
+    }
+
+    /* ── SIDEBAR ─────────────────────────────────────────── */
+    aside {
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 0;
+      display: flex; flex-direction: column;
+      position: sticky; top: 62px; height: calc(100vh - 62px);
+      overflow-y: auto;
+    }
+
+    .nav-section-label {
+      font-family: var(--mono);
+      font-size: .6rem; font-weight: 500;
+      letter-spacing: .18em; text-transform: uppercase;
+      color: var(--text-dim);
+      padding: .6rem 1.4rem .3rem;
+    }
+
+    .nav-btn {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .6rem 1.4rem;
+      font-size: .85rem; font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer; border: none; background: none;
+      width: 100%; text-align: left;
+      border-left: 2px solid transparent;
+      transition: all .15s;
+    }
+    .nav-btn:hover { color: var(--text); background: rgba(255,255,255,.03); }
+    .nav-btn.active { color: var(--accent); border-left-color: var(--accent); background: rgba(232,255,71,.05); }
+    .nav-icon { font-size: 1rem; min-width: 20px; text-align: center; }
+
+    .sidebar-stats {
+      margin-top: auto;
+      padding: 1rem 1.4rem;
+      border-top: 1px solid var(--border);
+    }
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .3rem 0;
+      font-family: var(--mono); font-size: .72rem;
+    }
+    .stat-key { color: var(--text-dim); }
+    .stat-val { color: var(--text-head); font-weight: 500; }
+
+    /* ── MAIN CONTENT ─────────────────────────────────────── */
+    main { padding: 2rem 2.5rem; display: flex; flex-direction: column; gap: 0; }
+
+    /* ── PAGES ───────────────────────────────────────────── */
+    .page { display: none; flex-direction: column; gap: 1.5rem; animation: fadeIn .2s ease; }
+    .page.active { display: flex; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    /* ── PAGE HEADER ─────────────────────────────────────── */
+    .page-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-title { font-family: var(--bebas); font-size: 2.4rem; letter-spacing: .05em; color: var(--text-head); line-height: 1; }
+    .page-sub { font-size: .8rem; color: var(--text-dim); margin-top: .25rem; font-family: var(--mono); }
+
+    /* ── CARDS ───────────────────────────────────────────── */
+    .stat-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .stat-card.y::before { background: var(--accent); }
+    .stat-card.g::before { background: var(--green); }
+    .stat-card.b::before { background: var(--blue); }
+    .stat-card.r::before { background: var(--red); }
+
+    .sc-label { font-family: var(--mono); font-size: .63rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: .6rem; }
+    .sc-value { font-family: var(--bebas); font-size: 2.5rem; color: var(--text-head); line-height: 1; }
+    .sc-sub { font-size: .72rem; color: var(--text-dim); margin-top: .35rem; }
+
+    /* ── TABLE ───────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    thead tr { background: var(--surface2); border-bottom: 1px solid var(--border); }
+    th { padding: .7rem 1rem; text-align: left; font-family: var(--mono); font-size: .63rem; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+    td { padding: .65rem 1rem; color: var(--text); border-bottom: 1px solid rgba(35,40,54,.5); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: rgba(255,255,255,.02); }
+
+    .chip {
+      display: inline-block; padding: .15rem .55rem;
+      border-radius: 4px; font-size: .68rem; font-weight: 500; font-family: var(--mono);
+    }
+    .chip.green { background: rgba(71,255,178,.1); color: var(--green); }
+    .chip.blue  { background: rgba(77,166,255,.1); color: var(--blue); }
+    .chip.yellow{ background: rgba(232,255,71,.1);  color: var(--accent); }
+    .chip.red   { background: rgba(255,77,109,.1);  color: var(--red); }
+
+    .action-btn {
+      background: none; border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-dim); padding: .25rem .55rem; cursor: pointer;
+      font-size: .75rem; font-family: var(--mono); transition: all .15s;
+      margin-right: .25rem;
+    }
+    .action-btn:hover { color: var(--text); border-color: #3a4255; }
+    .action-btn.del:hover { color: var(--red); border-color: var(--red); background: rgba(255,77,109,.08); }
+    .action-btn.edit-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(232,255,71,.05); }
+
+    /* ── FORMS ───────────────────────────────────────────── */
+    .form-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+    .form-card-title {
+      font-family: var(--mono); font-size: .68rem; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim);
+      margin-bottom: 1.25rem; padding-bottom: .75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 1rem;
+    }
+    .field { display: flex; flex-direction: column; gap: .4rem; }
+    label { font-family: var(--mono); font-size: .65rem; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: .6rem .85rem;
+      color: var(--text-head);
+      font-family: var(--body); font-size: .85rem;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      width: 100%;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,255,71,.08); }
+    input::placeholder { color: var(--text-dim); }
+    select option { background: var(--surface2); }
+
+    .form-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1.25rem; flex-wrap: wrap; }
+
+    /* ── BUTTONS ─────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .6rem 1.25rem; border-radius: var(--radius);
+      font-family: var(--mono); font-size: .78rem; font-weight: 500;
+      cursor: pointer; border: 1px solid transparent; transition: all .15s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #0d0f14; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-dk); }
+    .btn-ghost { background: transparent; color: var(--text-dim); border-color: var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: #3a4255; }
+    .btn-danger { background: rgba(255,77,109,.12); color: var(--red); border-color: rgba(255,77,109,.3); }
+    .btn-danger:hover { background: rgba(255,77,109,.2); }
+    .btn-blue { background: rgba(77,166,255,.12); color: var(--blue); border-color: rgba(77,166,255,.3); }
+    .btn-blue:hover { background: rgba(77,166,255,.2); }
+
+    /* ── BULK SELECTOR ───────────────────────────────────── */
+    .bulk-selector { display: flex; gap: .6rem; flex-wrap: wrap; }
+    .bulk-opt {
+      padding: .5rem 1.1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--mono); font-size: .8rem;
+      cursor: pointer; transition: all .15s;
+      color: var(--text-dim);
+      background: var(--bg);
+    }
+    .bulk-opt:hover { border-color: var(--accent); color: var(--accent); }
+    .bulk-opt.selected { background: var(--accent); color: #0d0f14; border-color: var(--accent); font-weight: 600; }
+
+    /* ── TERMINAL / LOG ──────────────────────────────────── */
+    .terminal {
+      background: #07090c;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      font-family: var(--mono); font-size: .76rem;
+      min-height: 120px; max-height: 220px;
+      overflow-y: auto; line-height: 1.75;
+    }
+    .log { display: block; }
+    .log.ok   { color: var(--green); }
+    .log.err  { color: var(--red); }
+    .log.warn { color: var(--accent); }
+    .log.dim  { color: var(--text-dim); }
+    .log.info { color: var(--blue); }
+
+    /* ── MODAL ───────────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+      z-index: 500; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      width: 100%; max-width: 500px;
+      animation: fadeIn .2s ease;
+    }
+    .modal-title { font-family: var(--bebas); font-size: 1.6rem; color: var(--text-head); margin-bottom: 1.25rem; }
+    .modal-actions { display: flex; gap: .75rem; margin-top: 1.5rem; justify-content: flex-end; }
+
+    /* ── TOAST ───────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 2rem; right: 2rem; z-index: 9998;
+      display: flex; flex-direction: column; gap: .5rem;
+    }
+    .toast-item {
+      padding: .7rem 1.1rem;
+      border-radius: var(--radius);
+      font-family: var(--mono); font-size: .78rem;
+      border: 1px solid;
+      animation: slideIn .25s ease;
+      max-width: 340px;
+    }
+    .toast-item.ok   { background: rgba(71,255,178,.1); color: var(--green); border-color: rgba(71,255,178,.25); }
+    .toast-item.err  { background: rgba(255,77,109,.1); color: var(--red);   border-color: rgba(255,77,109,.25); }
+    .toast-item.info { background: rgba(77,166,255,.1); color: var(--blue);  border-color: rgba(77,166,255,.25); }
+    @keyframes slideIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
+
+    /* ── EMPTY STATE ─────────────────────────────────────── */
+    .empty {
+      text-align: center; padding: 3.5rem 1rem;
+      color: var(--text-dim); font-family: var(--mono); font-size: .85rem;
+    }
+    .empty-icon { font-size: 2.5rem; display: block; margin-bottom: .75rem; opacity: .4; }
+
+    /* ── PAGINATION ──────────────────────────────────────── */
+    .pagination { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; padding-top: .75rem; }
+    .page-info { font-family: var(--mono); font-size: .72rem; color: var(--text-dim); margin-right: auto; }
+
+    /* ── SEARCH ROW ──────────────────────────────────────── */
+    .search-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .search-row input { max-width: 220px; }
+    .search-row select { max-width: 160px; }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">My<span>Flix</span>DB</div>
+  <div class="header-right">
+    <div class="db-pill" id="conn-pill">
+      <div class="dot"></div>
+      <span id="conn-text">Connecting…</span>
+    </div>
+    <button class="btn btn-ghost" style="font-size:.72rem;padding:.4rem .85rem" onclick="loadAll()">↻ Sync</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR ────────────────────────────────────────────────── -->
+  <aside>
+    <div class="nav-section-label">Browse</div>
+    <button class="nav-btn active" data-page="dashboard">
+      <span class="nav-icon">◈</span> Dashboard
+    </button>
+    <button class="nav-btn" data-page="movies">
+      <span class="nav-icon">▤</span> All Movies
+    </button>
+
+    <div class="nav-section-label" style="margin-top:.75rem">Manage</div>
+    <button class="nav-btn" data-page="add">
+      <span class="nav-icon">＋</span> Add Movie
+    </button>
+    <button class="nav-btn" data-page="bulk">
+      <span class="nav-icon">⊞</span> Bulk Insert
+    </button>
+    <button class="nav-btn" data-page="delete-range">
+      <span class="nav-icon">✕</span> Delete Range
+    </button>
+
+    <div class="sidebar-stats">
+      <div class="stat-row"><span class="stat-key">Total</span><span class="stat-val" id="sb-total">—</span></div>
+      <div class="stat-row"><span class="stat-key">DB</span><span class="stat-val">myflixdb</span></div>
+      <div class="stat-row"><span class="stat-key">Host</span><span class="stat-val">AWS RDS</span></div>
+      <div class="stat-row"><span class="stat-key">API</span><span class="stat-val" id="sb-api">—</span></div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ───────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- ════ DASHBOARD ════ -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub">myflixdb · AWS RDS MySQL · EC2 hosted</div>
+        </div>
+        <button class="btn btn-ghost" onclick="refreshDashboard()">↻ Refresh</button>
+      </div>
+
+      <div class="stat-cards">
+        <div class="stat-card y">
+          <div class="sc-label">Total Movies</div>
+          <div class="sc-value" id="dash-total">—</div>
+          <div class="sc-sub">rows in movies table</div>
+        </div>
+        <div class="stat-card g">
+          <div class="sc-label">API Status</div>
+          <div class="sc-value" id="dash-status" style="font-size:1.4rem;padding-top:.4rem">—</div>
+          <div class="sc-sub" id="dash-db-status">checking…</div>
+        </div>
+        <div class="stat-card b">
+          <div class="sc-label">Last Inserted</div>
+          <div class="sc-value" id="dash-last" style="font-size:1rem;padding-top:.5rem;word-break:break-word">—</div>
+          <div class="sc-sub">most recent title</div>
+        </div>
+        <div class="stat-card r">
+          <div class="sc-label">High ID Count</div>
+          <div class="sc-value" id="dash-high">—</div>
+          <div class="sc-sub">records with id &gt; 200</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Title</th><th>Director</th><th>Year</th><th>Genre</th><th>Rating</th></tr>
+          </thead>
+          <tbody id="dash-tbody">
+            <tr><td colspan="6"><div class="empty"><span class="empty-icon">◈</span>Click Refresh to load</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ════ ALL MOVIES ════ -->
+    <section class="page" id="page-movies">
+      <div class="page-head">
+        <div>
+          <div class="page-title">All Movies</div>
+          <div class="page-sub">SELECT * FROM movies</div>
+        </div>
+        <button class="btn btn-primary" onclick="loadMoviesPage()">▶ Run Query</button>
+      </div>
+
+      <div class="search-row">
+        <input type="text" id="filter-director" placeholder="Filter by director…" oninput="debouncedLoad()"/>
+        <input type="number" id="filter-year" placeholder="Filter by year…" oninput="debouncedLoad()"/>
+        <select id="filter-limit" onchange="loadMoviesPage()">
+          <option value="10">10 per page</option>
+          <option value="20" selected>20 per page</option>
+          <option value="50">50 per page</option>
+          <option value="100">100 per page</option>
+        </select>
+        <button class="btn btn-ghost" onclick="clearFilters()">✕ Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Title</th><th>Director</th><th>Year</th><th>Genre</th><th>Rating</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="movies-tbody">
+            <tr><td colspan="7"><div class="empty"><span class="empty-icon">▤</span>Press Run Query</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <span class="page-info" id="page-info-text">—</span>
+        <button class="btn btn-ghost" id="btn-prev" onclick="changePage(-1)" disabled>← Prev</button>
+        <button class="btn btn-ghost" id="btn-next" onclick="changePage(1)">Next →</button>
+      </div>
+    </section>
+
+    <!-- ════ ADD MOVIE ════ -->
+    <section class="page" id="page-add">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Add Movie</div>
+          <div class="page-sub">INSERT INTO movies</div>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-card-title">New Movie Record</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Title *</label>
+            <input type="text" id="add-title" placeholder="e.g. Interstellar"/>
+          </div>
+          <div class="field">
+            <label>Director *</label>
+            <input type="text" id="add-director" placeholder="e.g. Christopher Nolan"/>
+          </div>
+          <div class="field">
+            <label>Year Released *</label>
+            <input type="number" id="add-year" placeholder="e.g. 2014" min="1888" max="2099"/>
+          </div>
+          <div class="field">
+            <label>Genre</label>
+            <select id="add-genre">
+              <option value="">— Select genre —</option>
+              <option>Action</option><option>Comedy</option><option>Drama</option>
+              <option>Sci-Fi</option><option>Thriller</option><option>Horror</option>
+              <option>Romance</option><option>Documentary</option><option>Animation</option><option>Fantasy</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Rating</label>
+            <select id="add-rating">
+              <option value="">— Select rating —</option>
+              <option>G</option><option>PG</option><option>PG-13</option>
+              <option>R</option><option>NC-17</option><option>NR</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="addMovie()">✦ Add Movie</button>
+          <button class="btn btn-ghost" onclick="clearAddForm()">Clear</button>
+          <span id="add-status" style="font-family:var(--mono);font-size:.75rem;color:var(--text-dim)"></span>
+        </div>
+      </div>
+
+      <div class="terminal" id="add-log"><span class="log dim">// Ready</span></div>
+    </section>
+
+    <!-- ════ BULK INSERT ════ -->
+    <section class="page" id="page-bulk">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Bulk Insert</div>
+          <div class="page-sub">POST /movies/bulk — Faker-generated records</div>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-card-title">Choose Increment</div>
+        <div class="bulk-selector" id="bulk-selector">
+          <div class="bulk-opt selected" data-val="10">10</div>
+          <div class="bulk-opt" data-val="20">20</div>
+          <div class="bulk-opt" data-val="30">30</div>
+          <div class="bulk-opt" data-val="50">50</div>
+          <div class="bulk-opt" data-val="100">100</div>
+        </div>
+        <div class="form-actions" style="margin-top:1.25rem">
+          <button class="btn btn-primary" onclick="bulkInsert()">⊞ Insert Records</button>
+          <span id="bulk-status" style="font-family:var(--mono);font-size:.75rem;color:var(--text-dim)"></span>
+        </div>
+      </div>
+
+      <div class="terminal" id="bulk-log"><span class="log dim">// Select a count and click Insert Records</span></div>
+
+      <div class="form-card">
+        <div class="form-card-title">Preview — Last Bulk Insert</div>
+        <div class="table-wrap" style="border:none">
+          <table>
+            <thead><tr><th>ID</th><th>Title</th><th>Director</th><th>Year</th><th>Genre</th><th>Rating</th></tr></thead>
+            <tbody id="bulk-preview-tbody">
+              <tr><td colspan="6"><div class="empty" style="padding:1.5rem"><span>Run a bulk insert to preview results</span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ════ DELETE RANGE ════ -->
+    <section class="page" id="page-delete-range">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Delete Range</div>
+          <div class="page-sub">DELETE FROM movies WHERE id &gt; N</div>
+        </div>
+      </div>
+
+      <div class="form-card" style="border-color:rgba(255,77,109,.2)">
+        <div class="form-card-title" style="color:var(--red)">⚠ Destructive Operation</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Delete all movies with ID above</label>
+            <input type="number" id="del-threshold" value="200" min="0"/>
+          </div>
+          <div class="field">
+            <label>Confirm action</label>
+            <select id="del-confirm">
+              <option value="">— Select to confirm —</option>
+              <option value="yes">Yes, delete these records</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-danger" onclick="deleteRange()">✕ Execute Delete</button>
+          <button class="btn btn-ghost" onclick="previewDelete()">Preview affected rows</button>
+        </div>
+      </div>
+
+      <div class="terminal" id="del-log"><span class="log dim">// Ready</span></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── EDIT MODAL ───────────────────────────────────────────────── -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">Edit Movie</div>
+    <input type="hidden" id="edit-id"/>
+    <div class="form-grid">
+      <div class="field"><label>Title</label><input type="text" id="edit-title"/></div>
+      <div class="field"><label>Director</label><input type="text" id="edit-director"/></div>
+      <div class="field"><label>Year Released</label><input type="number" id="edit-year" min="1888" max="2099"/></div>
+      <div class="field">
+        <label>Genre</label>
+        <select id="edit-genre">
+          <option value="">—</option>
+          <option>Action</option><option>Comedy</option><option>Drama</option>
+          <option>Sci-Fi</option><option>Thriller</option><option>Horror</option>
+          <option>Romance</option><option>Documentary</option><option>Animation</option><option>Fantasy</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Rating</label>
+        <select id="edit-rating">
+          <option value="">—</option>
+          <option>G</option><option>PG</option><option>PG-13</option>
+          <option>R</option><option>NC-17</option><option>NR</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST CONTAINER ──────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+  // ── CONFIG ───────────────────────────────────────────────────────
+  // Change this to your EC2 public IP or domain when deploying
+  const API = window.location.origin;   // same origin — nginx proxies /api/*
+
+  // ── STATE ────────────────────────────────────────────────────────
+  let currentPage = 0;
+  let currentTotal = 0;
+  let selectedBulk = 10;
+
+  // ── NAVIGATION ──────────────────────────────────────────────────
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('page-' + btn.dataset.page).classList.add('active');
+    });
+  });
+
+  // ── BULK SELECTOR ────────────────────────────────────────────────
+  document.querySelectorAll('.bulk-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('.bulk-opt').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      selectedBulk = parseInt(opt.dataset.val);
+    });
+  });
+
+  // ── API HELPERS ──────────────────────────────────────────────────
+  async function api(method, path, body = null) {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+    return data;
+  }
+
+  // ── TOAST ────────────────────────────────────────────────────────
+  function toast(msg, type = 'ok') {
+    const t = document.getElementById('toast');
+    const el = document.createElement('div');
+    el.className = `toast-item ${type}`;
+    el.textContent = msg;
+    t.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  // ── LOG HELPER ───────────────────────────────────────────────────
+  function log(containerId, msg, type = 'ok') {
+    const el = document.getElementById(containerId);
+    const ts = new Date().toLocaleTimeString();
+    const line = document.createElement('span');
+    line.className = `log ${type}`;
+    line.textContent = `[${ts}] ${msg}\n`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function clearLog(id) {
+    document.getElementById(id).innerHTML = '<span class="log dim">// Cleared\n</span>';
+  }
+
+  // ── CHIP HELPERS ─────────────────────────────────────────────────
+  const genreColor = g => ({ 'Sci-Fi':'blue','Action':'red','Horror':'red','Drama':'green','Comedy':'yellow' }[g] || 'blue');
+  const ratingColor = r => ({ 'G':'green','PG':'green','PG-13':'yellow','R':'red','NC-17':'red' }[r] || 'blue');
+
+  function movieRow(m, withActions = false) {
+    const actions = withActions ? `
+      <td>
+        <button class="action-btn edit-btn" onclick="openEdit(${m.id},'${esc(m.title)}','${esc(m.director)}',${m.year_released},'${m.genre||''}','${m.rating||''}')">✎ Edit</button>
+        <button class="action-btn del" onclick="deleteOne(${m.id})">✕</button>
+      </td>` : '';
+    return `<tr>
+      <td><span style="font-family:var(--mono);color:var(--text-dim)">#${m.id}</span></td>
+      <td style="font-weight:500;color:var(--text-head)">${esc(m.title)}</td>
+      <td>${esc(m.director)}</td>
+      <td>${m.year_released}</td>
+      <td>${m.genre ? `<span class="chip ${genreColor(m.genre)}">${m.genre}</span>` : '—'}</td>
+      <td>${m.rating ? `<span class="chip ${ratingColor(m.rating)}">${m.rating}</span>` : '—'}</td>
+      ${actions}
+    </tr>`;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── HEALTH / CONNECT ─────────────────────────────────────────────
+  async function checkHealth() {
+    const pill = document.getElementById('conn-pill');
+    const txt  = document.getElementById('conn-text');
+    try {
+      const h = await api('GET', '/health');
+      pill.classList.add('connected');
+      txt.textContent = h.database === 'connected' ? 'Connected' : 'Degraded';
+      document.getElementById('sb-total').textContent = h.total_movies;
+      document.getElementById('sb-api').textContent = 'Online';
+      document.getElementById('dash-total').textContent = h.total_movies;
+      document.getElementById('dash-status').textContent = '● LIVE';
+      document.getElementById('dash-db-status').textContent = 'database connected';
+      document.getElementById('dash-high').textContent = '—';
+    } catch (e) {
+      txt.textContent = 'Offline';
+      document.getElementById('dash-status').textContent = '✕ DOWN';
+    }
+  }
+
+  // ── DASHBOARD ────────────────────────────────────────────────────
+  async function refreshDashboard() {
+    await checkHealth();
+    try {
+      const { data, total } = await api('GET', '/movies?limit=8&skip=0');
+      document.getElementById('dash-total').textContent = total;
+      document.getElementById('sb-total').textContent = total;
+      if (data.length) document.getElementById('dash-last').textContent = data[0].title;
+
+      // count high IDs client-side from this sample (rough)
+      const { data: allSample } = await api('GET', '/movies?limit=500&skip=0');
+      const high = allSample.filter(m => m.id > 200).length;
+      document.getElementById('dash-high').textContent = high;
+
+      document.getElementById('dash-tbody').innerHTML = data.map(m => movieRow(m)).join('') ||
+        '<tr><td colspan="6"><div class="empty">No records</div></td></tr>';
+    } catch(e) {
+      toast('Could not load dashboard: ' + e.message, 'err');
+    }
+  }
+
+  // ── ALL MOVIES ───────────────────────────────────────────────────
+  let debounceTimer;
+  function debouncedLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { currentPage = 0; loadMoviesPage(); }, 400);
+  }
+
+  function clearFilters() {
+    document.getElementById('filter-director').value = '';
+    document.getElementById('filter-year').value = '';
+    currentPage = 0;
+    loadMoviesPage();
+  }
+
+  function changePage(dir) {
+    const limit = parseInt(document.getElementById('filter-limit').value);
+    const maxPage = Math.ceil(currentTotal / limit) - 1;
+    currentPage = Math.max(0, Math.min(currentPage + dir, maxPage));
+    loadMoviesPage();
+  }
+
+  async function loadMoviesPage() {
+    const limit    = parseInt(document.getElementById('filter-limit').value);
+    const director = document.getElementById('filter-director').value.trim();
+    const year     = document.getElementById('filter-year').value.trim();
+    const skip     = currentPage * limit;
+
+    let qs = `/movies?limit=${limit}&skip=${skip}`;
+    if (director) qs += `&director=${encodeURIComponent(director)}`;
+    if (year)     qs += `&year=${year}`;
+
+    try {
+      const { data, total } = await api('GET', qs);
+      currentTotal = total;
+      const maxPage = Math.ceil(total / limit) - 1;
+
+      document.getElementById('movies-tbody').innerHTML =
+        data.length ? data.map(m => movieRow(m, true)).join('') :
+        '<tr><td colspan="7"><div class="empty"><span class="empty-icon">▤</span>No results</div></td></tr>';
+
+      document.getElementById('page-info-text').textContent =
+        `${skip + 1}–${Math.min(skip + limit, total)} of ${total} records`;
+      document.getElementById('btn-prev').disabled = currentPage === 0;
+      document.getElementById('btn-next').disabled = currentPage >= maxPage;
+    } catch(e) {
+      toast('Query failed: ' + e.message, 'err');
+    }
+  }
+
+  // ── ADD MOVIE ────────────────────────────────────────────────────
+  async function addMovie() {
+    const title    = document.getElementById('add-title').value.trim();
+    const director = document.getElementById('add-director').value.trim();
+    const year     = parseInt(document.getElementById('add-year').value);
+    const genre    = document.getElementById('add-genre').value;
+    const rating   = document.getElementById('add-rating').value;
+
+    if (!title || !director || !year) {
+      toast('Title, Director, and Year are required', 'err'); return;
+    }
+
+    const body = { title, director, year_released: year };
+    if (genre)  body.genre  = genre;
+    if (rating) body.rating = rating;
+
+    try {
+      const m = await api('POST', '/movies', body);
+      log('add-log', `INSERT OK — id=${m.id} title='${m.title}'`, 'ok');
+      toast(`✦ "${m.title}" added (id=${m.id})`, 'ok');
+      clearAddForm();
+      await checkHealth();
+    } catch(e) {
+      log('add-log', `ERROR — ${e.message}`, 'err');
+      toast('Insert failed: ' + e.message, 'err');
+    }
+  }
+
+  function clearAddForm() {
+    ['add-title','add-director','add-year'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('add-genre').value  = '';
+    document.getElementById('add-rating').value = '';
+  }
+
+  // ── BULK INSERT ──────────────────────────────────────────────────
+  async function bulkInsert() {
+    const status = document.getElementById('bulk-status');
+    status.textContent = `Inserting ${selectedBulk} records…`;
+    log('bulk-log', `POST /movies/bulk  count=${selectedBulk}`, 'info');
+
+    try {
+      const res = await api('POST', '/movies/bulk', { count: selectedBulk });
+      log('bulk-log', `✓ ${res.inserted} movies inserted`, 'ok');
+      status.textContent = `✓ ${res.inserted} inserted`;
+      toast(`⊞ ${res.inserted} movies added`, 'ok');
+
+      document.getElementById('bulk-preview-tbody').innerHTML =
+        res.movies.map(m => movieRow(m)).join('');
+      await checkHealth();
+    } catch(e) {
+      log('bulk-log', `ERROR — ${e.message}`, 'err');
+      status.textContent = 'Failed';
+      toast('Bulk insert failed: ' + e.message, 'err');
+    }
+  }
+
+  // ── DELETE ONE ───────────────────────────────────────────────────
+  async function deleteOne(id) {
+    if (!confirm(`Delete movie #${id}?`)) return;
+    try {
+      await api('DELETE', `/movies/${id}`);
+      toast(`🗑 Movie #${id} deleted`, 'info');
+      await loadMoviesPage();
+      await checkHealth();
+    } catch(e) {
+      toast('Delete failed: ' + e.message, 'err');
+    }
+  }
+
+  // ── DELETE RANGE ─────────────────────────────────────────────────
+  async function previewDelete() {
+    const threshold = parseInt(document.getElementById('del-threshold').value);
+    try {
+      const { data } = await api('GET', `/movies?limit=500&skip=0`);
+      const affected = data.filter(m => m.id > threshold).length;
+      log('del-log', `PREVIEW: ~${affected} rows would be deleted (id > ${threshold})`, 'warn');
+    } catch(e) {
+      log('del-log', `Could not preview: ${e.message}`, 'err');
+    }
+  }
+
+  async function deleteRange() {
+    const threshold = parseInt(document.getElementById('del-threshold').value);
+    const confirmed = document.getElementById('del-confirm').value;
+    if (confirmed !== 'yes') { toast('Please confirm the action first', 'err'); return; }
+
+    log('del-log', `DELETE FROM movies WHERE id > ${threshold}`, 'warn');
+    try {
+      const res = await api('DELETE', `/movies?above_id=${threshold}`);
+      log('del-log', res.message, 'ok');
+      toast(res.message, 'info');
+      document.getElementById('del-confirm').value = '';
+      await checkHealth();
+    } catch(e) {
+      log('del-log', `ERROR — ${e.message}`, 'err');
+      toast('Delete failed: ' + e.message, 'err');
+    }
+  }
+
+  // ── EDIT MODAL ───────────────────────────────────────────────────
+  function openEdit(id, title, director, year, genre, rating) {
+    document.getElementById('edit-id').value       = id;
+    document.getElementById('edit-title').value    = title;
+    document.getElementById('edit-director').value = director;
+    document.getElementById('edit-year').value     = year;
+    document.getElementById('edit-genre').value    = genre;
+    document.getElementById('edit-rating').value   = rating;
+    document.getElementById('edit-modal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('edit-modal').classList.remove('open');
+  }
+
+  async function saveEdit() {
+    const id       = document.getElementById('edit-id').value;
+    const title    = document.getElementById('edit-title').value.trim();
+    const director = document.getElementById('edit-director').value.trim();
+    const year     = parseInt(document.getElementById('edit-year').value);
+    const genre    = document.getElementById('edit-genre').value;
+    const rating   = document.getElementById('edit-rating').value;
+
+    const body = {};
+    if (title)    body.title         = title;
+    if (director) body.director      = director;
+    if (year)     body.year_released = year;
+    if (genre)    body.genre         = genre;
+    if (rating)   body.rating        = rating;
+
+    try {
+      await api('PUT', `/movies/${id}`, body);
+      toast(`✦ Movie #${id} updated`, 'ok');
+      closeModal();
+      await loadMoviesPage();
+    } catch(e) {
+      toast('Update failed: ' + e.message, 'err');
+    }
+  }
+
+  // Close modal on overlay click
+  document.getElementById('edit-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+
+  // ── INIT ─────────────────────────────────────────────────────────
+  async function loadAll() {
+    await checkHealth();
+    await refreshDashboard();
+  }
+
+  loadAll();
+</script>
+</body>
+</html>
