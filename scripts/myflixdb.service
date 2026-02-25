@@ -3,8 +3,8 @@ Description=MyFlixDB FastAPI Application
 After=network.target
 
 [Service]
-User=ec2-user
-Group=ec2-user
+User=root
+Group=root
 WorkingDirectory=/root/myflixdb
 Environment="PATH=/root/myflixdb/venv/bin"
 EnvironmentFile=/root/myflixdb/.env
