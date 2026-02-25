@@ -5,12 +5,12 @@ After=network.target
 [Service]
 User=ec2-user
 Group=ec2-user
-WorkingDirectory=/home/ec2-user/myflixdb
-Environment="PATH=/home/ec2-user/myflixdb/venv/bin"
-EnvironmentFile=/home/ec2-user/myflixdb/.env
+WorkingDirectory=/root/myflixdb
+Environment="PATH=/root/myflixdb/venv/bin"
+EnvironmentFile=/root/myflixdb/.env
 
 # Gunicorn with Uvicorn workers — tune workers to (2 × vCPUs) + 1
-ExecStart=/home/ec2-user/myflixdb/venv/bin/gunicorn \
+ExecStart=/root/myflixdb/venv/bin/gunicorn \
     app.main:app \
     --workers 4 \
     --worker-class uvicorn.workers.UvicornWorker \
